@@ -356,7 +356,32 @@
 // ═══════════════════════════════════════════════════════
 //  CONFIG
 // ═══════════════════════════════════════════════════════
-const CHUNK = 600; // chars per QR (conservative for reliable scanning)
+// Byte-based limit — handles Unicode (smart quotes, em-dashes, etc.) correctly.
+// 500 bytes sits well below QR version 27 Level-M capacity (667 bytes).
+const MAX_QR_BYTES = 500;
+const PREFIX_OH = 12; // worst-case "[99/99]" prefix overhead in bytes
+const enc = new TextEncoder();
+
+// Build byte-safe chunks. Each chunk (including its "[n/N]" prefix) stays
+// under MAX_QR_BYTES so even heavily multibyte text encodes without error.
+function buildChunks(text) {
+    if (enc.encode(text).length <= MAX_QR_BYTES) return [text];
+
+    const limit = MAX_QR_BYTES - PREFIX_OH;
+    const raw = [];
+    let pos = 0;
+    while (pos < text.length) {
+        if (pos >= text.length) break;
+        // Start with a character estimate, then trim until bytes fit
+        let end = Math.min(pos + limit, text.length);
+        while (enc.encode(text.slice(pos, end)).length > limit && end > pos + 1) end--;
+        raw.push(text.slice(pos, end));
+        pos = end;
+    }
+
+    const total = raw.length;
+    return raw.map((c, i) => `[${i + 1}/${total}]${c}`);
+}
 
 // ═══════════════════════════════════════════════════════
 //  STATE – Generate
@@ -440,10 +465,13 @@ function fallbackCopy(text) {
 //  GENERATE – Input helpers
 // ═══════════════════════════════════════════════════════
 function onInput() {
-    const len = document.getElementById('inputText').value.length;
-    document.getElementById('charCount').textContent = len;
-    const n = Math.max(1, Math.ceil(len / CHUNK));
-    document.getElementById('qrEst').textContent = n === 1 ? '1 QR code' : `${n} QR codes`;
+    const text = document.getElementById('inputText').value;
+    document.getElementById('charCount').textContent = text.length;
+    const bytes = enc.encode(text.trim()).length;
+    const n = bytes <= MAX_QR_BYTES
+        ? 1
+        : Math.ceil((bytes + PREFIX_OH) / MAX_QR_BYTES); // fast estimate
+    document.getElementById('qrEst').textContent = n === 1 ? '1 QR code' : `~${n} QR codes`;
 }
 
 function clearGen() {
@@ -460,14 +488,7 @@ function generateQR() {
     const text = document.getElementById('inputText').value.trim();
     if (!text) { toast('Enter some text first.'); return; }
 
-    if (text.length <= CHUNK) {
-        chunks = [text];
-    } else {
-        const total = Math.ceil(text.length / CHUNK);
-        chunks = Array.from({ length: total }, (_, i) =>
-            `[${i + 1}/${total}]` + text.slice(i * CHUNK, (i + 1) * CHUNK)
-        );
-    }
+    chunks = buildChunks(text);
 
     chunkIdx = 0;
     renderQR();
@@ -493,7 +514,31 @@ function renderQR() {
             correctLevel: QRCode.CorrectLevel.M
         });
     } catch (e) {
-        box.innerHTML = '<p style="color:red;padding:12px">QR too large – try smaller text.</p>';
+        // Chunk still too large (e.g. extreme multibyte density) — halve the
+        // byte limit and rebuild all chunks, then retry once.
+        box.innerHTML = '';
+        const saferLimit = Math.floor(MAX_QR_BYTES * 0.6);
+        const text = document.getElementById('inputText').value.trim();
+        const raw2 = [];
+        let pos = 0;
+        while (pos < text.length) {
+            let end = Math.min(pos + saferLimit, text.length);
+            while (enc.encode(text.slice(pos, end)).length > saferLimit - PREFIX_OH && end > pos + 1) end--;
+            raw2.push(text.slice(pos, end));
+            pos = end;
+        }
+        const total2 = raw2.length;
+        chunks = raw2.map((c, i) => total2 > 1 ? `[${i+1}/${total2}]${c}` : c);
+        try {
+            qrObj = new QRCode(box, {
+                text: chunks[chunkIdx],
+                width: size, height: size,
+                colorDark: '#000', colorLight: '#fff',
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        } catch (e2) {
+            box.innerHTML = '<p style="color:#dc2626;padding:12px;font-size:.85rem">Unable to encode this chunk. Try pasting plain text (avoid special characters).</p>';
+        }
     }
 
     if (chunks.length > 1) {
