@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>QR Transfer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --primary-light: #dbeafe;
+            --success: #10b981;
+            --success-light: #d1fae5;
+            --bg: #f1f5f9;
+            --card: #ffffff;
+            --text: #0f172a;
+            --muted: #64748b;
+            --border: #e2e8f0;
+            --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+            --shadow-md: 0 4px 12px rgba(0,0,0,.08);
+            --r: 14px;
+            --r-sm: 9px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            font-size: 16px;
+            line-height: 1.5;
+        }
+
+        /* ── Header ─────────────────────────────────────── */
+        .header {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+            color: #fff;
+            padding: 18px 20px 16px;
+            text-align: center;
+        }
+        .header h1 { font-size: 1.35rem; font-weight: 800; letter-spacing: -.4px; }
+        .header p  { font-size: .78rem; opacity: .8; margin-top: 3px; }
+
+        /* ── Tabs ────────────────────────────────────────── */
+        .tabs {
+            display: flex;
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+            position: sticky; top: 0; z-index: 50;
+            box-shadow: var(--shadow);
+        }
+        .tab-btn {
+            flex: 1; padding: 14px 8px;
+            border: none; background: none;
+            font-size: .95rem; font-weight: 600;
+            color: var(--muted); cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: color .15s, border-color .15s;
+        }
+        .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+        /* ── Layout ─────────────────────────────────────── */
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+        .wrap { max-width: 580px; margin: 0 auto; padding: 16px 14px 40px; }
+
+        /* ── Cards ───────────────────────────────────────── */
+        .card {
+            background: var(--card);
+            border-radius: var(--r);
+            box-shadow: var(--shadow);
+            padding: 18px 18px 20px;
+            margin-bottom: 14px;
+        }
+        .card-label {
+            font-size: .72rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: .6px;
+            color: var(--muted); margin-bottom: 12px;
+        }
+
+        /* ── Form controls ───────────────────────────────── */
+        select, textarea {
+            width: 100%;
+            border: 1.5px solid var(--border);
+            border-radius: var(--r-sm);
+            padding: 10px 12px;
+            font-size: .95rem; font-family: inherit;
+            color: var(--text); background: #f8fafc;
+            transition: border-color .15s, background .15s;
+            outline: none;
+        }
+        select:focus, textarea:focus {
+            border-color: var(--primary); background: #fff;
+        }
+        select {
+            cursor: pointer; appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2364748b' d='M6 8 0 0h12z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 13px center;
+            background-color: #f8fafc;
+            padding-right: 36px;
+        }
+        textarea { resize: vertical; min-height: 148px; line-height: 1.55; }
+
+        .type-row {
+            display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+        }
+        .type-row label { font-size: .85rem; font-weight: 500; color: var(--muted); white-space: nowrap; }
+        .type-row select { flex: 1; }
+
+        .char-hint {
+            font-size: .72rem; color: var(--muted);
+            text-align: right; margin-top: 5px;
+        }
+
+        /* ── Buttons ─────────────────────────────────────── */
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            padding: 11px 18px; border: none; border-radius: var(--r-sm);
+            font-size: .9rem; font-weight: 700; cursor: pointer;
+            transition: filter .12s, transform .1s; white-space: nowrap;
+        }
+        .btn:active { transform: scale(.97); }
+
+        .btn-primary { background: var(--primary); color: #fff; }
+        .btn-primary:hover { filter: brightness(1.08); }
+
+        .btn-ghost {
+            background: var(--bg); color: var(--text);
+            border: 1.5px solid var(--border);
+        }
+        .btn-ghost:hover { background: var(--border); }
+
+        .btn-success { background: var(--success); color: #fff; }
+        .btn-success:hover { filter: brightness(1.08); }
+
+        .btn-gemini {
+            width: 100%; margin-bottom: 11px;
+            background: linear-gradient(135deg, #4f8ef7, #34a853);
+            color: #fff; font-size: .88rem;
+        }
+        .btn-gemini:hover { filter: brightness(1.07); }
+
+        .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+        .btn-row .btn-primary { flex: 2; }
+        .btn-row .btn-ghost   { flex: 1; }
+        .btn-full { width: 100%; }
+
+        /* ── QR display ─────────────────────────────────── */
+        .qr-wrap { text-align: center; }
+        .qr-canvas-box {
+            display: inline-block;
+            padding: 14px; background: #fff;
+            border-radius: var(--r);
+            box-shadow: var(--shadow-md);
+            margin: 8px 0 10px;
+        }
+        .qr-canvas-box canvas,
+        .qr-canvas-box img { display: block; }
+
+        .qr-nav {
+            display: flex; align-items: center;
+            justify-content: center; gap: 12px; margin-bottom: 10px;
+        }
+        .qr-nav .btn { padding: 8px 16px; font-size: .82rem; }
+        .qr-idx {
+            font-size: .9rem; font-weight: 700;
+            min-width: 90px; text-align: center;
+        }
+
+        .tip {
+            font-size: .78rem; color: #1e40af;
+            background: var(--primary-light);
+            border-radius: var(--r-sm);
+            padding: 9px 12px; text-align: left; line-height: 1.45;
+        }
+
+        /* ── Scan ────────────────────────────────────────── */
+        video#cam {
+            width: 100%; border-radius: var(--r-sm);
+            background: #000; display: block;
+            max-height: 300px; object-fit: cover;
+        }
+        canvas#buf { display: none; }
+
+        .scan-status {
+            display: flex; align-items: center; gap: 8px;
+            margin-top: 9px; font-size: .83rem; color: var(--muted);
+        }
+        .dot {
+            width: 9px; height: 9px; border-radius: 50%;
+            background: var(--success); flex-shrink: 0;
+            animation: blink 1.4s ease-in-out infinite;
+        }
+        @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+
+        .chunk-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+        .pill {
+            padding: 4px 11px; border-radius: 20px;
+            font-size: .73rem; font-weight: 700;
+            background: var(--border); color: var(--muted);
+            transition: background .2s, color .2s;
+        }
+        .pill.got { background: var(--success-light); color: #065f46; }
+
+        .progress-label { font-size: .9rem; font-weight: 700; }
+
+        #outputText {
+            min-height: 150px;
+            font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
+            font-size: .84rem; line-height: 1.6;
+        }
+
+        /* ── Toast ───────────────────────────────────────── */
+        .toast {
+            position: fixed; bottom: 22px; left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: #1a202c; color: #fff;
+            padding: 10px 20px; border-radius: 99px;
+            font-size: .83rem; font-weight: 600;
+            z-index: 999; white-space: nowrap;
+            transition: transform .25s ease, opacity .25s;
+            pointer-events: none;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+
+        /* ── Utility ─────────────────────────────────────── */
+        .hidden { display: none !important; }
+
+        /* ── Responsive ──────────────────────────────────── */
+        @media (max-width: 420px) {
+            .header h1 { font-size: 1.15rem; }
+            .card { padding: 14px 14px 16px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ════════════════════ HEADER ════════════════════ -->
+<header class="header">
+    <h1>QR Transfer</h1>
+    <p>Move text &amp; tables between devices — no internet needed</p>
+</header>
+
+<!-- ════════════════════ TABS ══════════════════════ -->
+<nav class="tabs">
+    <button class="tab-btn active" id="tabGenBtn" onclick="showTab('gen')">&#9654; Generate QR</button>
+    <button class="tab-btn"        id="tabScanBtn" onclick="showTab('scan')">&#9641; Scan QR</button>
+</nav>
+
+<!-- ════════════════════ GENERATE ══════════════════ -->
+<div class="tab-pane active" id="genPane">
+<div class="wrap">
+
+    <div class="card">
+        <div class="card-label">Input</div>
+
+        <div class="type-row">
+            <label for="typeSelect">Type</label>
+            <select id="typeSelect" onchange="onTypeChange()">
+                <option value="text">Paragraph / Text</option>
+                <option value="table">Table</option>
+                <option value="numbers">Numbers / List</option>
+            </select>
+        </div>
+
+        <!-- Shown only for Table / Numbers -->
+        <button id="geminiBtn" class="btn btn-gemini hidden" onclick="copyGeminiPrompt()">
+            ✨ Copy Gemini Prompt &nbsp;·&nbsp; clean up OCR text
+        </button>
+
+        <textarea id="inputText"
+            placeholder="Paste your text, table data, or numbers here…"
+            oninput="onInput()"></textarea>
+
+        <div class="char-hint">
+            <span id="charCount">0</span> chars &nbsp;·&nbsp;
+            <span id="qrEst">1 QR code</span>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn btn-primary" onclick="generateQR()">Generate QR Code</button>
+            <button class="btn btn-ghost"   onclick="clearGen()">Clear</button>
+        </div>
+    </div>
+
+    <!-- QR output -->
+    <div class="card qr-wrap hidden" id="qrCard">
+        <div class="card-label">QR Code</div>
+
+        <div class="qr-canvas-box" id="qrBox"></div>
+
+        <div class="qr-nav hidden" id="qrNav">
+            <button class="btn btn-ghost" onclick="stepQR(-1)">&#8592; Prev</button>
+            <span class="qr-idx" id="qrIdx">1 / 1</span>
+            <button class="btn btn-ghost" onclick="stepQR(1)">Next &#8594;</button>
+        </div>
+
+        <p class="tip" id="qrTip">Hold this QR code up so the other device can scan it.</p>
+    </div>
+
+</div>
+</div>
+
+<!-- ════════════════════ SCAN ═══════════════════════ -->
+<div class="tab-pane" id="scanPane">
+<div class="wrap">
+
+    <div class="card">
+        <div class="card-label">Camera</div>
+
+        <div id="camSection" class="hidden">
+            <video id="cam" autoplay playsinline muted></video>
+            <canvas id="buf"></canvas>
+            <div class="scan-status">
+                <div class="dot"></div>
+                <span id="scanMsg">Scanning for QR code…</span>
+            </div>
+        </div>
+
+        <button id="startBtn" class="btn btn-primary btn-full" onclick="startScan()">Start Camera</button>
+        <button id="stopBtn"  class="btn btn-ghost btn-full hidden" style="margin-top:8px" onclick="stopScan()">Stop Camera</button>
+    </div>
+
+    <!-- Multi-QR progress -->
+    <div class="card hidden" id="progressCard">
+        <div class="card-label">Scan Progress</div>
+        <p class="progress-label" id="progressLabel">Captured: 0 / ?</p>
+        <div class="chunk-pills" id="pillsBox"></div>
+        <p style="font-size:.76rem;color:var(--muted);margin-top:9px;">
+            Scan each QR code in any order — they reassemble automatically.
+        </p>
+    </div>
+
+    <!-- Output -->
+    <div class="card hidden" id="outputCard">
+        <div class="card-label">Scanned Text</div>
+        <textarea id="outputText" readonly placeholder="Scanned content will appear here…"></textarea>
+        <div class="btn-row">
+            <button class="btn btn-success" onclick="copyOutput()">Copy to Clipboard</button>
+            <button class="btn btn-ghost"   onclick="clearScan()">Clear</button>
+        </div>
+    </div>
+
+</div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  CONFIG
+// ═══════════════════════════════════════════════════════
+const CHUNK = 600; // chars per QR (conservative for reliable scanning)
+
+// ═══════════════════════════════════════════════════════
+//  STATE – Generate
+// ═══════════════════════════════════════════════════════
+let chunks = [], chunkIdx = 0, qrObj = null;
+
+// ═══════════════════════════════════════════════════════
+//  STATE – Scan
+// ═══════════════════════════════════════════════════════
+let camStream = null, rafId = null;
+let got = {}, expected = null, lastData = '', lastTime = 0;
+
+// ═══════════════════════════════════════════════════════
+//  TABS
+// ═══════════════════════════════════════════════════════
+function showTab(t) {
+    document.getElementById('genPane').classList.toggle('active', t === 'gen');
+    document.getElementById('scanPane').classList.toggle('active', t === 'scan');
+    document.getElementById('tabGenBtn').classList.toggle('active', t === 'gen');
+    document.getElementById('tabScanBtn').classList.toggle('active', t === 'scan');
+}
+
+// ═══════════════════════════════════════════════════════
+//  GENERATE – Type selector
+// ═══════════════════════════════════════════════════════
+function onTypeChange() {
+    const v = document.getElementById('typeSelect').value;
+    document.getElementById('geminiBtn').classList.toggle('hidden', v === 'text');
+}
+
+// ═══════════════════════════════════════════════════════
+//  GENERATE – Gemini prompts
+// ═══════════════════════════════════════════════════════
+const PROMPTS = {
+    table: [
+        "The text below was extracted via OCR from a photo of a table.",
+        "Convert it into clean tab-separated values (TSV) that paste directly into Microsoft Excel.",
+        "",
+        "Rules:",
+        "• First row = column headers",
+        "• Subsequent rows = data rows",
+        "• Separate values with TAB characters",
+        "• Fix OCR errors (e.g. '0'↔'O', '1'↔'l', '|' as column dividers)",
+        "• Output ONLY the TSV — no markdown, no explanation",
+        "",
+        "OCR text:",
+        ""
+    ].join("\n"),
+
+    numbers: [
+        "The text below was extracted via OCR and contains numerical data.",
+        "Clean it up: fix OCR errors (confused digits / letters), remove noise, and return one value per line.",
+        "Output ONLY the cleaned values — no explanation.",
+        "",
+        "OCR text:",
+        ""
+    ].join("\n")
+};
+
+function copyGeminiPrompt() {
+    const type   = document.getElementById('typeSelect').value;
+    const body   = document.getElementById('inputText').value.trim();
+    const tmpl   = PROMPTS[type] || PROMPTS.table;
+    const full   = tmpl + (body || '[PASTE YOUR OCR TEXT HERE]');
+
+    navigator.clipboard.writeText(full)
+        .then(() => toast('Gemini prompt copied — paste it into Gemini!'))
+        .catch(() => { fallbackCopy(full); toast('Gemini prompt copied!'); });
+}
+
+function fallbackCopy(text) {
+    const t = document.createElement('textarea');
+    t.value = text;
+    t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select();
+    document.execCommand('copy');
+    document.body.removeChild(t);
+}
+
+// ═══════════════════════════════════════════════════════
+//  GENERATE – Input helpers
+// ═══════════════════════════════════════════════════════
+function onInput() {
+    const len = document.getElementById('inputText').value.length;
+    document.getElementById('charCount').textContent = len;
+    const n = Math.max(1, Math.ceil(len / CHUNK));
+    document.getElementById('qrEst').textContent = n === 1 ? '1 QR code' : `${n} QR codes`;
+}
+
+function clearGen() {
+    document.getElementById('inputText').value = '';
+    onInput();
+    document.getElementById('qrCard').classList.add('hidden');
+    chunks = []; chunkIdx = 0;
+}
+
+// ═══════════════════════════════════════════════════════
+//  GENERATE – QR generation
+// ═══════════════════════════════════════════════════════
+function generateQR() {
+    const text = document.getElementById('inputText').value.trim();
+    if (!text) { toast('Enter some text first.'); return; }
+
+    if (text.length <= CHUNK) {
+        chunks = [text];
+    } else {
+        const total = Math.ceil(text.length / CHUNK);
+        chunks = Array.from({ length: total }, (_, i) =>
+            `[${i + 1}/${total}]` + text.slice(i * CHUNK, (i + 1) * CHUNK)
+        );
+    }
+
+    chunkIdx = 0;
+    renderQR();
+    const card = document.getElementById('qrCard');
+    card.classList.remove('hidden');
+    setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+}
+
+function renderQR() {
+    const box  = document.getElementById('qrBox');
+    const nav  = document.getElementById('qrNav');
+    const idx  = document.getElementById('qrIdx');
+    const tip  = document.getElementById('qrTip');
+
+    box.innerHTML = '';
+    const size = Math.min(272, window.innerWidth - 76);
+
+    try {
+        qrObj = new QRCode(box, {
+            text: chunks[chunkIdx],
+            width: size, height: size,
+            colorDark: '#000', colorLight: '#fff',
+            correctLevel: QRCode.CorrectLevel.M
+        });
+    } catch (e) {
+        box.innerHTML = '<p style="color:red;padding:12px">QR too large – try smaller text.</p>';
+    }
+
+    if (chunks.length > 1) {
+        nav.classList.remove('hidden');
+        idx.textContent = `${chunkIdx + 1} / ${chunks.length}`;
+        tip.textContent = `Scan all ${chunks.length} QR codes in order. Use the arrows (or ← → keys) to navigate.`;
+    } else {
+        nav.classList.add('hidden');
+        tip.textContent = 'Hold this QR code up so the other device can scan it.';
+    }
+}
+
+function stepQR(dir) {
+    const n = chunkIdx + dir;
+    if (n < 0 || n >= chunks.length) return;
+    chunkIdx = n;
+    renderQR();
+}
+
+// Arrow key navigation
+document.addEventListener('keydown', e => {
+    if (!document.getElementById('genPane').classList.contains('active')) return;
+    if (['TEXTAREA', 'SELECT', 'INPUT'].includes(e.target.tagName)) return;
+    if (e.key === 'ArrowLeft')  stepQR(-1);
+    if (e.key === 'ArrowRight') stepQR(1);
+});
+
+// ═══════════════════════════════════════════════════════
+//  SCAN – Camera
+// ═══════════════════════════════════════════════════════
+async function startScan() {
+    try {
+        camStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        const vid = document.getElementById('cam');
+        vid.srcObject = camStream;
+        await vid.play();
+
+        document.getElementById('camSection').classList.remove('hidden');
+        document.getElementById('startBtn').classList.add('hidden');
+        document.getElementById('stopBtn').classList.remove('hidden');
+
+        // Reset state
+        got = {}; expected = null; lastData = ''; lastTime = 0;
+        document.getElementById('progressCard').classList.add('hidden');
+        document.getElementById('outputCard').classList.add('hidden');
+
+        frame();
+    } catch (err) {
+        toast('Camera not available or permission denied.');
+    }
+}
+
+function stopScan() {
+    if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    document.getElementById('camSection').classList.add('hidden');
+    document.getElementById('startBtn').classList.remove('hidden');
+    document.getElementById('stopBtn').classList.add('hidden');
+}
+
+function frame() {
+    const vid = document.getElementById('cam');
+    const buf = document.getElementById('buf');
+
+    if (!camStream || vid.readyState < 2) { rafId = requestAnimationFrame(frame); return; }
+
+    buf.width  = vid.videoWidth;
+    buf.height = vid.videoHeight;
+    const ctx = buf.getContext('2d');
+    ctx.drawImage(vid, 0, 0);
+
+    const img  = ctx.getImageData(0, 0, buf.width, buf.height);
+    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+
+    if (code) {
+        const now = Date.now();
+        if (code.data !== lastData || now - lastTime > 2000) {
+            lastData = code.data; lastTime = now;
+            handleQR(code.data);
+        }
+    }
+
+    rafId = requestAnimationFrame(frame);
+}
+
+// ═══════════════════════════════════════════════════════
+//  SCAN – QR processing
+// ═══════════════════════════════════════════════════════
+function handleQR(data) {
+    const m = data.match(/^\[(\d+)\/(\d+)\]([\s\S]*)$/);
+
+    if (m) {
+        // Multi-part
+        const i = parseInt(m[1]), total = parseInt(m[2]), content = m[3];
+        expected = total;
+        got[i] = content;
+        refreshProgress();
+        document.getElementById('scanMsg').textContent =
+            `Got chunk ${i}/${total} — ${Object.keys(got).length} of ${total} captured`;
+
+        if (Object.keys(got).length === total) {
+            assemble();
+        }
+    } else {
+        // Single QR
+        showOutput(data);
+        document.getElementById('scanMsg').textContent = 'QR code scanned!';
+    }
+}
+
+function refreshProgress() {
+    const total = expected;
+    const have  = Object.keys(got).length;
+
+    document.getElementById('progressCard').classList.remove('hidden');
+    document.getElementById('progressLabel').textContent = `Captured: ${have} / ${total}`;
+
+    const box = document.getElementById('pillsBox');
+    box.innerHTML = '';
+    for (let i = 1; i <= total; i++) {
+        const p = document.createElement('div');
+        p.className = 'pill' + (got[i] !== undefined ? ' got' : '');
+        p.textContent = `#${i}`;
+        box.appendChild(p);
+    }
+}
+
+function assemble() {
+    let out = '';
+    for (let i = 1; i <= expected; i++) out += got[i];
+    showOutput(out);
+    toast(`All ${expected} QR codes scanned — text assembled!`);
+}
+
+function showOutput(text) {
+    document.getElementById('outputText').value = text;
+    const card = document.getElementById('outputCard');
+    card.classList.remove('hidden');
+    setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+}
+
+function copyOutput() {
+    const text = document.getElementById('outputText').value;
+    if (!text) return;
+    navigator.clipboard.writeText(text)
+        .then(() => toast('Copied to clipboard!'))
+        .catch(() => { fallbackCopy(text); toast('Copied!'); });
+}
+
+function clearScan() {
+    got = {}; expected = null; lastData = '';
+    document.getElementById('outputText').value = '';
+    document.getElementById('outputCard').classList.add('hidden');
+    document.getElementById('progressCard').classList.add('hidden');
+    document.getElementById('scanMsg').textContent = 'Scanning for QR code…';
+}
+
+// ═══════════════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════════════
+let toastTimer;
+function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+}
+</script>
+</body>
+</html>
