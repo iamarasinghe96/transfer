@@ -398,6 +398,27 @@ function buildChunks(text) {
     return raw.map((c, i) => `[${i + 1}/${total}]${c}`);
 }
 
+// ── Unicode encoding helpers ──────────────────────────────────────────────────
+// QRious uses charCodeAt() internally — characters with code-points > 255
+// (Sinhala, CJK, emoji, …) are corrupted. jsQR decodes byte-mode as Latin-1.
+// Fix: always work with raw UTF-8 byte strings (each JS char = one byte 0-255).
+
+// JS string → UTF-8 byte string (safe for QRious byte mode)
+function textToBin(str) {
+    return Array.from(enc.encode(str), b => String.fromCharCode(b)).join('');
+}
+
+// UTF-8 byte string (from jsQR) → proper JS string
+function binToText(bin) {
+    try {
+        return new TextDecoder('utf-8').decode(
+            new Uint8Array(Array.from(bin, c => c.charCodeAt(0)))
+        );
+    } catch (e) {
+        return bin; // fallback: return as-is
+    }
+}
+
 // ═══════════════════════════════════════════════════════
 //  STATE – Generate
 // ═══════════════════════════════════════════════════════
@@ -503,7 +524,8 @@ function generateQR() {
     const text = document.getElementById('inputText').value.trim();
     if (!text) { toast('Enter some text first.'); return; }
 
-    chunks = buildChunks(text);
+    // Convert each chunk to a UTF-8 byte string so QRious encodes it correctly.
+    chunks = buildChunks(text).map(textToBin);
     chunkIdx = 0;
     renderQR();
 
@@ -642,8 +664,8 @@ function handleQR(data) {
             assemble();
         }
     } else {
-        // Single QR
-        showOutput(data);
+        // Single QR — data is a UTF-8 byte string from jsQR; decode it.
+        showOutput(binToText(data));
         document.getElementById('scanMsg').textContent = 'QR code scanned!';
     }
 }
@@ -666,9 +688,11 @@ function refreshProgress() {
 }
 
 function assemble() {
-    let out = '';
-    for (let i = 1; i <= expected; i++) out += got[i];
-    showOutput(out);
+    // got[i] stores the raw byte-string content (after stripping the prefix).
+    // Concatenate byte strings, then decode the whole thing as UTF-8.
+    let bin = '';
+    for (let i = 1; i <= expected; i++) bin += got[i];
+    showOutput(binToText(bin));
     toast(`All ${expected} QR codes scanned — text assembled!`);
 }
 
