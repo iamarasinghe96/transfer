@@ -231,6 +231,37 @@
         /* ── Utility ─────────────────────────────────────── */
         .hidden { display: none !important; }
 
+        /* ── Prompt modal ────────────────────────────────── */
+        .modal-bg {
+            position: fixed; inset: 0; z-index: 300;
+            background: rgba(0,0,0,.55);
+            display: flex; align-items: flex-end;
+        }
+        .modal-sheet {
+            background: var(--card); width: 100%;
+            border-radius: var(--r) var(--r) 0 0;
+            padding: 20px 18px 32px;
+            max-height: 72vh; display: flex; flex-direction: column;
+        }
+        .modal-hdr {
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: .88rem; font-weight: 700;
+            color: var(--muted); text-transform: uppercase; letter-spacing: .5px;
+            margin-bottom: 10px;
+        }
+        .modal-close {
+            border: none; background: none; font-size: 1.1rem;
+            cursor: pointer; color: var(--muted); padding: 2px 6px;
+        }
+        .modal-hint {
+            font-size: .82rem; color: var(--muted);
+            margin-bottom: 10px; line-height: 1.4;
+        }
+        .modal-sheet textarea {
+            flex: 1; min-height: 160px; font-size: .8rem;
+            line-height: 1.55; resize: none;
+        }
+
         /* ── Responsive ──────────────────────────────────── */
         @media (max-width: 420px) {
             .header h1 { font-size: 1.15rem; }
@@ -351,6 +382,19 @@
 
 <!-- Toast -->
 <div class="toast" id="toast"></div>
+
+<!-- Gemini prompt modal (fallback for mobile clipboard) -->
+<div class="modal-bg hidden" id="promptModal" onclick="closeModal(event)">
+    <div class="modal-sheet">
+        <div class="modal-hdr">
+            <span>Gemini Prompt</span>
+            <button class="modal-close" onclick="closeModal()">&#10005;</button>
+        </div>
+        <p class="modal-hint">Tap <strong>Select all</strong>, then use your browser's copy option.</p>
+        <textarea id="promptModalText" readonly></textarea>
+        <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="selectModalText()">Select All Text</button>
+    </div>
+</div>
 
 <script>
 // ═══════════════════════════════════════════════════════
@@ -478,23 +522,64 @@ const PROMPTS = {
 };
 
 function copyGeminiPrompt() {
-    const type   = document.getElementById('typeSelect').value;
-    const body   = document.getElementById('inputText').value.trim();
-    const tmpl   = PROMPTS[type] || PROMPTS.table;
-    const full   = tmpl + (body || '[PASTE YOUR OCR TEXT HERE]');
+    const type = document.getElementById('typeSelect').value;
+    const body = document.getElementById('inputText').value.trim();
+    const tmpl = PROMPTS[type] || PROMPTS.table;
+    const full = tmpl + (body || '[PASTE YOUR OCR TEXT HERE]');
 
-    navigator.clipboard.writeText(full)
-        .then(() => toast('Gemini prompt copied — paste it into Gemini!'))
-        .catch(() => { fallbackCopy(full); toast('Gemini prompt copied!'); });
+    // 1. Try execCommand synchronously — MUST happen inside the click handler
+    //    (before any async gap) or iOS Safari rejects it.
+    if (execCopy(full)) {
+        toast('Gemini prompt copied — paste it into Gemini!');
+        return;
+    }
+
+    // 2. Try modern async Clipboard API (works on HTTPS / Android Chrome).
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(full)
+            .then(() => toast('Gemini prompt copied — paste it into Gemini!'))
+            .catch(() => showPromptModal(full));
+        return;
+    }
+
+    // 3. Last resort: show modal so user can copy manually.
+    showPromptModal(full);
 }
 
-function fallbackCopy(text) {
-    const t = document.createElement('textarea');
-    t.value = text;
-    t.style.position = 'fixed'; t.style.opacity = '0';
-    document.body.appendChild(t); t.select();
-    document.execCommand('copy');
-    document.body.removeChild(t);
+// Synchronous copy via execCommand — most reliable on iOS when called
+// directly from a user-gesture handler (no async in the call stack).
+function execCopy(text) {
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.setSelectionRange(0, text.length);
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+    } catch (e) {
+        return false;
+    }
+}
+
+function showPromptModal(text) {
+    document.getElementById('promptModalText').value = text;
+    document.getElementById('promptModal').classList.remove('hidden');
+    // Auto-select so user just needs to tap Copy
+    setTimeout(() => selectModalText(), 80);
+}
+
+function selectModalText() {
+    const ta = document.getElementById('promptModalText');
+    ta.focus();
+    ta.setSelectionRange(0, ta.value.length);
+}
+
+function closeModal(e) {
+    if (e && e.target !== document.getElementById('promptModal')) return;
+    document.getElementById('promptModal').classList.add('hidden');
 }
 
 // ═══════════════════════════════════════════════════════
