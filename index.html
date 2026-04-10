@@ -501,11 +501,13 @@ const PROMPTS = {
         "Convert it into clean tab-separated values (TSV) that paste directly into Microsoft Excel.",
         "",
         "Rules:",
-        "• First row = column headers",
-        "• Subsequent rows = data rows",
-        "• Separate values with TAB characters",
-        "• Fix OCR errors (e.g. '0'↔'O', '1'↔'l', '|' as column dividers)",
-        "• Output ONLY the TSV — no markdown, no explanation",
+        "• First row = column headers only (no data on the header row)",
+        "• Each subsequent row = exactly one data row — do not merge or split rows",
+        "• Separate columns with TAB characters",
+        "• Keep empty or placeholder cells exactly as they appear (e.g. a dash '-' stays as '-')",
+        "• Fix obvious OCR errors (e.g. '0'↔'O', '1'↔'l', '|' used as a column divider)",
+        "• Do NOT wrap output in code fences (no ``` or ```tsv) — raw TSV only",
+        "• Output ONLY the TSV data — no intro sentence, no explanation, nothing else",
         "",
         "OCR text:",
         ""
@@ -514,7 +516,7 @@ const PROMPTS = {
     numbers: [
         "The text below was extracted via OCR and contains numerical data.",
         "Clean it up: fix OCR errors (confused digits / letters), remove noise, and return one value per line.",
-        "Output ONLY the cleaned values — no explanation.",
+        "Do NOT wrap output in code fences. Output ONLY the cleaned values — no explanation.",
         "",
         "OCR text:",
         ""
