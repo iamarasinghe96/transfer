@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>QR Transfer</title>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -498,22 +498,21 @@ function clearGen() {
 // ═══════════════════════════════════════════════════════
 //  GENERATE – QR generation
 // ═══════════════════════════════════════════════════════
-async function generateQR() {
+function generateQR() {
     const text = document.getElementById('inputText').value.trim();
     if (!text) { toast('Enter some text first.'); return; }
 
     chunks = buildChunks(text);
     chunkIdx = 0;
-    await renderQR();
+    renderQR();
 
     const card = document.getElementById('qrCard');
     card.classList.remove('hidden');
     setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
 }
 
-// Uses node-qrcode (QRCode global from the CDN build) which correctly handles
-// all content sizes and Unicode without the bugs in qrcodejs v1.0.0.
-async function renderQR() {
+// QRious (cdnjs) — synchronous canvas API, reliable across all content sizes.
+function renderQR() {
     const box = document.getElementById('qrBox');
     const nav = document.getElementById('qrNav');
     const idx = document.getElementById('qrIdx');
@@ -525,11 +524,11 @@ async function renderQR() {
     box.appendChild(canvas);
 
     try {
-        await QRCode.toCanvas(canvas, chunks[chunkIdx], {
-            width: size,
-            margin: 1,
-            errorCorrectionLevel: 'M',
-            color: { dark: '#000000', light: '#ffffff' }
+        new QRious({
+            element: canvas,
+            value: chunks[chunkIdx],
+            size: size,
+            level: 'M'
         });
     } catch (e) {
         box.innerHTML = `<p style="color:#dc2626;padding:12px;font-size:.85rem">QR error: ${e.message}</p>`;
@@ -546,19 +545,19 @@ async function renderQR() {
     }
 }
 
-async function stepQR(dir) {
+function stepQR(dir) {
     const n = chunkIdx + dir;
     if (n < 0 || n >= chunks.length) return;
     chunkIdx = n;
-    await renderQR();
+    renderQR();
 }
 
 // Arrow key navigation
-document.addEventListener('keydown', async e => {
+document.addEventListener('keydown', e => {
     if (!document.getElementById('genPane').classList.contains('active')) return;
     if (['TEXTAREA', 'SELECT', 'INPUT'].includes(e.target.tagName)) return;
-    if (e.key === 'ArrowLeft')  await stepQR(-1);
-    if (e.key === 'ArrowRight') await stepQR(1);
+    if (e.key === 'ArrowLeft')  stepQR(-1);
+    if (e.key === 'ArrowRight') stepQR(1);
 });
 
 // ═══════════════════════════════════════════════════════
