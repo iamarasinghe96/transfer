@@ -356,10 +356,11 @@
 // ═══════════════════════════════════════════════════════
 //  CONFIG
 // ═══════════════════════════════════════════════════════
-// Byte-based limit so multibyte Unicode (smart quotes, em-dashes, CJK, …)
-// is handled correctly. 400 bytes ≈ QR version 22 at Level-M (430 B cap) —
-// compact enough for reliable phone-to-laptop scanning.
-const MAX_QR_BYTES = 400;
+// Byte-based limit so multibyte Unicode (smart quotes, em-dashes, Sinhala,
+// emoji, …) is handled correctly.
+// 200 bytes → QR version ~14 (77×77 modules). At a 340px canvas that gives
+// ~4px per module — reliably scannable by a laptop webcam from ~40 cm.
+const MAX_QR_BYTES = 200;
 const PREFIX_OH = 12; // max "[99/99]" prefix in bytes
 const enc = new TextEncoder();
 
@@ -519,7 +520,8 @@ function renderQR() {
     const tip = document.getElementById('qrTip');
 
     box.innerHTML = '';
-    const size = Math.min(272, window.innerWidth - 76);
+    // Use 88 % of viewport width up to 360 px — larger = bigger modules = easier scan
+    const size = Math.min(Math.floor(window.innerWidth * 0.88), 360);
     const canvas = document.createElement('canvas');
     box.appendChild(canvas);
 
@@ -528,7 +530,8 @@ function renderQR() {
             element: canvas,
             value: chunks[chunkIdx],
             size: size,
-            level: 'M'
+            level: 'M',
+            padding: 8   // tight quiet-zone so modules use more of the canvas
         });
     } catch (e) {
         box.innerHTML = `<p style="color:#dc2626;padding:12px;font-size:.85rem">QR error: ${e.message}</p>`;
