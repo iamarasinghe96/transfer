@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>QR Transfer</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -356,25 +356,39 @@
 // ═══════════════════════════════════════════════════════
 //  CONFIG
 // ═══════════════════════════════════════════════════════
-// Byte-based limit — handles Unicode (smart quotes, em-dashes, etc.) correctly.
-// 500 bytes sits well below QR version 27 Level-M capacity (667 bytes).
-const MAX_QR_BYTES = 500;
-const PREFIX_OH = 12; // worst-case "[99/99]" prefix overhead in bytes
+// Byte-based limit so multibyte Unicode (smart quotes, em-dashes, CJK, …)
+// is handled correctly. 400 bytes ≈ QR version 22 at Level-M (430 B cap) —
+// compact enough for reliable phone-to-laptop scanning.
+const MAX_QR_BYTES = 400;
+const PREFIX_OH = 12; // max "[99/99]" prefix in bytes
 const enc = new TextEncoder();
 
-// Build byte-safe chunks. Each chunk (including its "[n/N]" prefix) stays
-// under MAX_QR_BYTES so even heavily multibyte text encodes without error.
+// Splits text into byte-safe chunks. Uses a binary-search approach so it
+// handles dense multibyte content without a slow char-by-char trim loop.
 function buildChunks(text) {
-    if (enc.encode(text).length <= MAX_QR_BYTES) return [text];
+    const textBytes = enc.encode(text).length;
+    if (textBytes <= MAX_QR_BYTES) return [text];
 
-    const limit = MAX_QR_BYTES - PREFIX_OH;
+    const contentLimit = MAX_QR_BYTES - PREFIX_OH; // bytes available for content
+
+    // Helper: find the largest safe end index within [lo, hi]
+    function safeCut(start, hi) {
+        if (enc.encode(text.slice(start, hi)).length <= contentLimit) return hi;
+        let lo = start;
+        // binary search
+        while (lo < hi - 1) {
+            const mid = (lo + hi) >> 1;
+            if (enc.encode(text.slice(start, mid)).length <= contentLimit) lo = mid;
+            else hi = mid;
+        }
+        return lo;
+    }
+
     const raw = [];
     let pos = 0;
     while (pos < text.length) {
-        if (pos >= text.length) break;
-        // Start with a character estimate, then trim until bytes fit
-        let end = Math.min(pos + limit, text.length);
-        while (enc.encode(text.slice(pos, end)).length > limit && end > pos + 1) end--;
+        const end = safeCut(pos, Math.min(pos + contentLimit + 4, text.length));
+        if (end <= pos) { raw.push(text[pos]); pos++; continue; } // single-char safety
         raw.push(text.slice(pos, end));
         pos = end;
     }
@@ -484,61 +498,42 @@ function clearGen() {
 // ═══════════════════════════════════════════════════════
 //  GENERATE – QR generation
 // ═══════════════════════════════════════════════════════
-function generateQR() {
+async function generateQR() {
     const text = document.getElementById('inputText').value.trim();
     if (!text) { toast('Enter some text first.'); return; }
 
     chunks = buildChunks(text);
-
     chunkIdx = 0;
-    renderQR();
+    await renderQR();
+
     const card = document.getElementById('qrCard');
     card.classList.remove('hidden');
     setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
 }
 
-function renderQR() {
-    const box  = document.getElementById('qrBox');
-    const nav  = document.getElementById('qrNav');
-    const idx  = document.getElementById('qrIdx');
-    const tip  = document.getElementById('qrTip');
+// Uses node-qrcode (QRCode global from the CDN build) which correctly handles
+// all content sizes and Unicode without the bugs in qrcodejs v1.0.0.
+async function renderQR() {
+    const box = document.getElementById('qrBox');
+    const nav = document.getElementById('qrNav');
+    const idx = document.getElementById('qrIdx');
+    const tip = document.getElementById('qrTip');
 
     box.innerHTML = '';
     const size = Math.min(272, window.innerWidth - 76);
+    const canvas = document.createElement('canvas');
+    box.appendChild(canvas);
 
     try {
-        qrObj = new QRCode(box, {
-            text: chunks[chunkIdx],
-            width: size, height: size,
-            colorDark: '#000', colorLight: '#fff',
-            correctLevel: QRCode.CorrectLevel.M
+        await QRCode.toCanvas(canvas, chunks[chunkIdx], {
+            width: size,
+            margin: 1,
+            errorCorrectionLevel: 'M',
+            color: { dark: '#000000', light: '#ffffff' }
         });
     } catch (e) {
-        // Chunk still too large (e.g. extreme multibyte density) — halve the
-        // byte limit and rebuild all chunks, then retry once.
-        box.innerHTML = '';
-        const saferLimit = Math.floor(MAX_QR_BYTES * 0.6);
-        const text = document.getElementById('inputText').value.trim();
-        const raw2 = [];
-        let pos = 0;
-        while (pos < text.length) {
-            let end = Math.min(pos + saferLimit, text.length);
-            while (enc.encode(text.slice(pos, end)).length > saferLimit - PREFIX_OH && end > pos + 1) end--;
-            raw2.push(text.slice(pos, end));
-            pos = end;
-        }
-        const total2 = raw2.length;
-        chunks = raw2.map((c, i) => total2 > 1 ? `[${i+1}/${total2}]${c}` : c);
-        try {
-            qrObj = new QRCode(box, {
-                text: chunks[chunkIdx],
-                width: size, height: size,
-                colorDark: '#000', colorLight: '#fff',
-                correctLevel: QRCode.CorrectLevel.M
-            });
-        } catch (e2) {
-            box.innerHTML = '<p style="color:#dc2626;padding:12px;font-size:.85rem">Unable to encode this chunk. Try pasting plain text (avoid special characters).</p>';
-        }
+        box.innerHTML = `<p style="color:#dc2626;padding:12px;font-size:.85rem">QR error: ${e.message}</p>`;
+        return;
     }
 
     if (chunks.length > 1) {
@@ -551,19 +546,19 @@ function renderQR() {
     }
 }
 
-function stepQR(dir) {
+async function stepQR(dir) {
     const n = chunkIdx + dir;
     if (n < 0 || n >= chunks.length) return;
     chunkIdx = n;
-    renderQR();
+    await renderQR();
 }
 
 // Arrow key navigation
-document.addEventListener('keydown', e => {
+document.addEventListener('keydown', async e => {
     if (!document.getElementById('genPane').classList.contains('active')) return;
     if (['TEXTAREA', 'SELECT', 'INPUT'].includes(e.target.tagName)) return;
-    if (e.key === 'ArrowLeft')  stepQR(-1);
-    if (e.key === 'ArrowRight') stepQR(1);
+    if (e.key === 'ArrowLeft')  await stepQR(-1);
+    if (e.key === 'ArrowRight') await stepQR(1);
 });
 
 // ═══════════════════════════════════════════════════════
