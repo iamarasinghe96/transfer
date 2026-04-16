@@ -452,9 +452,10 @@ const enc = new TextEncoder();
 // handles dense multibyte content without a slow char-by-char trim loop.
 function buildChunks(text) {
     const textBytes = enc.encode(text).length;
-    if (textBytes <= MAX_QR_BYTES) return [text];
+    if (textBytes <= Math.floor(MAX_QR_BYTES * 3 / 4)) return [text];
 
-    const contentLimit = MAX_QR_BYTES - PREFIX_OH; // bytes available for content
+    // base64 expands 4/3; work back from MAX_QR_BYTES to find safe raw byte limit
+    const contentLimit = Math.floor(MAX_QR_BYTES * 3 / 4) - PREFIX_OH;
 
     // Helper: find the largest safe end index within [lo, hi]
     function safeCut(start, hi) {
@@ -483,23 +484,27 @@ function buildChunks(text) {
 }
 
 // ── Unicode encoding helpers ──────────────────────────────────────────────────
-// QRious uses charCodeAt() internally — characters with code-points > 255
-// (Sinhala, CJK, emoji, …) are corrupted. jsQR decodes byte-mode as Latin-1.
-// Fix: always work with raw UTF-8 byte strings (each JS char = one byte 0-255).
+// QRious charCodeAt() corrupts codepoints > 255. jsQR byte-mode may apply
+// Windows-1252 to bytes 0x80–0x9F (e.g. 0x80 → €, corrupting the byte value).
+// Fix: encode as base64 so all QR data is pure ASCII — zero encoding ambiguity.
 
-// JS string → UTF-8 byte string (safe for QRious byte mode)
+// JS string → base64 of UTF-8 bytes (pure ASCII, safe for any QR library)
 function textToBin(str) {
-    return Array.from(enc.encode(str), b => String.fromCharCode(b)).join('');
+    const bytes = enc.encode(str);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
 }
 
-// UTF-8 byte string (from jsQR) → proper JS string
-function binToText(bin) {
+// base64 QR data → proper JS string
+function binToText(b64) {
     try {
+        const bin = atob(b64);
         return new TextDecoder('utf-8').decode(
             new Uint8Array(Array.from(bin, c => c.charCodeAt(0)))
         );
     } catch (e) {
-        return bin; // fallback: return as-is
+        return b64; // fallback: return as-is
     }
 }
 
@@ -918,10 +923,12 @@ function frame() {
 //  SCAN – QR processing
 // ═══════════════════════════════════════════════════════
 function handleQR(data) {
-    const m = data.match(/^\[(\d+)\/(\d+)\]([\s\S]*)$/);
+    // data is a base64 string from jsQR; decode it first, then check for prefix
+    const decoded = binToText(data);
+    const m = decoded.match(/^\[(\d+)\/(\d+)\]([\s\S]*)$/);
 
     if (m) {
-        // Multi-part
+        // Multi-part — store the decoded text content (not raw bytes)
         const i = parseInt(m[1]), total = parseInt(m[2]), content = m[3];
         expected = total;
         got[i] = content;
@@ -933,8 +940,7 @@ function handleQR(data) {
             assemble();
         }
     } else {
-        // Single QR — data is a UTF-8 byte string from jsQR; decode it.
-        showOutput(binToText(data));
+        showOutput(decoded);
         document.getElementById('scanMsg').textContent = 'QR code scanned!';
     }
 }
@@ -957,11 +963,10 @@ function refreshProgress() {
 }
 
 function assemble() {
-    // got[i] stores the raw byte-string content (after stripping the prefix).
-    // Concatenate byte strings, then decode the whole thing as UTF-8.
-    let bin = '';
-    for (let i = 1; i <= expected; i++) bin += got[i];
-    showOutput(binToText(bin));
+    // got[i] stores already-decoded text content; just join.
+    let text = '';
+    for (let i = 1; i <= expected; i++) text += got[i] || '';
+    showOutput(text);
     toast(`All ${expected} QR codes scanned — text assembled!`);
 }
 
