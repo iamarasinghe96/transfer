@@ -296,6 +296,7 @@
                 <option value="text">Paragraph / Text</option>
                 <option value="table">Table</option>
                 <option value="numbers">Numbers / List</option>
+                <option value="page">Full Page (text + tables)</option>
             </select>
         </div>
 
@@ -517,6 +518,36 @@ const PROMPTS = {
         "The text below was extracted via OCR and contains numerical data.",
         "Clean it up: fix OCR errors (confused digits / letters), remove noise, and return one value per line.",
         "Do NOT wrap output in code fences. Output ONLY the cleaned values — no explanation.",
+        "",
+        "OCR text:",
+        ""
+    ].join("\n"),
+
+    page: [
+        "The text below was extracted via OCR from a photo of a document page.",
+        "The page may contain a mix of headings, paragraphs, bullet lists, and tables.",
+        "",
+        "Clean and reconstruct the content following these rules:",
+        "",
+        "GENERAL:",
+        "• Fix all OCR errors throughout (confused letters/digits, broken words, stray characters)",
+        "• Preserve the original reading order — top to bottom, left to right",
+        "• Do NOT add markdown symbols (* # ` ~) or code fences",
+        "• Output ONLY the cleaned content — no intro sentence, no explanation",
+        "",
+        "TEXT SECTIONS (headings, paragraphs, lists):",
+        "• Output as plain text",
+        "• Each paragraph on its own line, blank line between paragraphs",
+        "• List items each on their own line, prefixed with '- '",
+        "",
+        "TABLE SECTIONS:",
+        "• Format each table as tab-separated values (TSV)",
+        "• Wrap every table between these exact marker lines (including the === lines):",
+        "  ===TABLE===",
+        "  [TSV rows here — first row is headers, one data row per line]",
+        "  ===END TABLE===",
+        "• Keep empty or placeholder cells (e.g. '-') exactly as they appear",
+        "• Do NOT put tables inside code fences",
         "",
         "OCR text:",
         ""
