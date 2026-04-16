@@ -650,7 +650,7 @@ function renderQR() {
     if (chunks.length > 1) {
         nav.classList.remove('hidden');
         idx.textContent = `${chunkIdx + 1} / ${chunks.length}`;
-        tip.textContent = `Scan all ${chunks.length} QR codes in order. Use the arrows (or ← → keys) to navigate.`;
+        tip.textContent = `Scan all ${chunks.length} QR codes — swipe the QR left/right, use volume buttons, or tap the arrows.`;
     } else {
         nav.classList.add('hidden');
         tip.textContent = 'Hold this QR code up so the other device can scan it.';
@@ -664,13 +664,49 @@ function stepQR(dir) {
     renderQR();
 }
 
-// Arrow key navigation
+// ── Keyboard + volume button navigation ──────────────────────────────────────
+// Arrow keys work on desktop. Android Chrome fires 'AudioVolumeUp/Down' key
+// events for the hardware volume buttons — we preventDefault so the system
+// volume bar doesn't pop up while the user is holding up the phone.
+// iOS Safari locks volume keys at the OS level; swipe gestures cover iOS.
 document.addEventListener('keydown', e => {
-    if (!document.getElementById('genPane').classList.contains('active')) return;
-    if (['TEXTAREA', 'SELECT', 'INPUT'].includes(e.target.tagName)) return;
-    if (e.key === 'ArrowLeft')  stepQR(-1);
-    if (e.key === 'ArrowRight') stepQR(1);
+    const genActive = document.getElementById('genPane').classList.contains('active');
+    const qrVisible = !document.getElementById('qrCard').classList.contains('hidden');
+
+    // Arrow keys (desktop)
+    if (genActive && !['TEXTAREA', 'SELECT', 'INPUT'].includes(e.target.tagName)) {
+        if (e.key === 'ArrowLeft')  { stepQR(-1); return; }
+        if (e.key === 'ArrowRight') { stepQR(1);  return; }
+    }
+
+    // Volume buttons (Android Chrome) — only intercept when navigating QR codes
+    const isVolUp   = e.key === 'AudioVolumeUp'   || e.key === 'VolumeUp'   || e.keyCode === 175;
+    const isVolDown = e.key === 'AudioVolumeDown'  || e.key === 'VolumeDown' || e.keyCode === 174;
+    if ((isVolUp || isVolDown) && genActive && qrVisible && chunks.length > 1) {
+        e.preventDefault(); // stops the system volume overlay appearing
+        stepQR(isVolUp ? -1 : 1);
+    }
 });
+
+// ── Swipe gestures on the QR card (iOS + Android) ────────────────────────────
+// Horizontal swipe left = next code, swipe right = previous.
+// Only fires when the swipe is clearly horizontal (dx > dy) to avoid
+// fighting with vertical page scroll.
+(function () {
+    let x0 = 0, y0 = 0;
+    const card = document.getElementById('qrCard');
+    card.addEventListener('touchstart', e => {
+        x0 = e.touches[0].clientX;
+        y0 = e.touches[0].clientY;
+    }, { passive: true });
+    card.addEventListener('touchend', e => {
+        const dx = e.changedTouches[0].clientX - x0;
+        const dy = e.changedTouches[0].clientY - y0;
+        if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+            stepQR(dx < 0 ? 1 : -1); // swipe left → next, swipe right → prev
+        }
+    }, { passive: true });
+}());
 
 // ═══════════════════════════════════════════════════════
 //  SCAN – Camera
