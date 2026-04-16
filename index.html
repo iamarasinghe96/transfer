@@ -507,7 +507,7 @@ function binToText(bin) {
 //  STATE – Generate
 // ═══════════════════════════════════════════════════════
 let chunks = [], chunkIdx = 0, qrObj = null;
-let slideshowTimer = null, isPlaying = false;
+let slideshowTimer = null, isPlaying = false, slideshowIsInterval = false;
 
 // ═══════════════════════════════════════════════════════
 //  STATE – Scan
@@ -764,17 +764,26 @@ function togglePlay() {
 function startSlideshow() {
     isPlaying = true;
     updatePlayBtn();
-    slideshowTimer = setInterval(() => {
-        chunkIdx = (chunkIdx + 1) % chunks.length; // loop back to 1 after last
+    slideshowIsInterval = false;
+    // 1s delay so user can flip phone, then advance every 1.5s
+    slideshowTimer = setTimeout(() => {
+        chunkIdx = (chunkIdx + 1) % chunks.length;
         renderQR();
-    }, 1500);
+        slideshowIsInterval = true;
+        slideshowTimer = setInterval(() => {
+            chunkIdx = (chunkIdx + 1) % chunks.length;
+            renderQR();
+        }, 1500);
+    }, 1000);
 }
 
 function pauseSlideshow() {
     if (!isPlaying && !slideshowTimer) return;
     isPlaying = false;
-    clearInterval(slideshowTimer);
+    if (slideshowIsInterval) clearInterval(slideshowTimer);
+    else clearTimeout(slideshowTimer);
     slideshowTimer = null;
+    slideshowIsInterval = false;
     updatePlayBtn();
 }
 
