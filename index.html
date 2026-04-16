@@ -681,7 +681,10 @@ function renderQR() {
     if (chunks.length > 1) {
         nav.classList.remove('hidden');
         idx.textContent = `${chunkIdx + 1} / ${chunks.length}`;
-        tip.textContent = `Scan all ${chunks.length} QR codes — swipe the QR left/right, use volume buttons, or tap the arrows.`;
+        // Tip is platform-aware: iOS can't intercept volume buttons (OS-level lock)
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        const volTip = isAndroid ? ' · volume buttons' : '';
+        tip.textContent = `Scan all ${chunks.length} QR codes — tap QR to advance · swipe left/right${volTip} · or use the arrows.`;
     } else {
         nav.classList.add('hidden');
         tip.textContent = 'Hold this QR code up so the other device can scan it.';
@@ -719,22 +722,33 @@ document.addEventListener('keydown', e => {
     }
 });
 
-// ── Swipe gestures on the QR card (iOS + Android) ────────────────────────────
-// Horizontal swipe left = next code, swipe right = previous.
-// Only fires when the swipe is clearly horizontal (dx > dy) to avoid
-// fighting with vertical page scroll.
+// ── Tap / swipe gestures on the QR card (iOS + Android) ──────────────────────
+// • Tap anywhere on the QR (not on a nav button) → advance to next code.
+//   This is the primary iOS navigation: one thumb, no swipe needed.
+// • Swipe left → next, swipe right → previous.
+//   Only fires for clearly horizontal movement to avoid fighting page scroll.
 (function () {
-    let x0 = 0, y0 = 0;
+    let x0 = 0, y0 = 0, moved = false;
     const card = document.getElementById('qrCard');
+
     card.addEventListener('touchstart', e => {
         x0 = e.touches[0].clientX;
         y0 = e.touches[0].clientY;
+        moved = false;
     }, { passive: true });
+
+    card.addEventListener('touchmove', () => { moved = true; }, { passive: true });
+
     card.addEventListener('touchend', e => {
         const dx = e.changedTouches[0].clientX - x0;
         const dy = e.changedTouches[0].clientY - y0;
+
         if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-            stepQR(dx < 0 ? 1 : -1); // swipe left → next, swipe right → prev
+            // Horizontal swipe
+            stepQR(dx < 0 ? 1 : -1);
+        } else if (!moved && chunks.length > 1 && !e.target.closest('button')) {
+            // Tap (no significant movement) on non-button area → next
+            stepQR(1);
         }
     }, { passive: true });
 }());
