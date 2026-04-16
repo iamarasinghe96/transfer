@@ -765,7 +765,7 @@ function startSlideshow() {
     isPlaying = true;
     updatePlayBtn();
     slideshowIsInterval = false;
-    // 1s delay so user can flip phone, then advance every 1.5s
+    // 3s delay so user can flip phone, then advance every 1.5s
     slideshowTimer = setTimeout(() => {
         chunkIdx = (chunkIdx + 1) % chunks.length;
         renderQR();
@@ -774,7 +774,7 @@ function startSlideshow() {
             chunkIdx = (chunkIdx + 1) % chunks.length;
             renderQR();
         }, 1500);
-    }, 1000);
+    }, 3000);
 }
 
 function pauseSlideshow() {
