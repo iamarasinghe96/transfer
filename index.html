@@ -177,6 +177,34 @@
             min-width: 90px; text-align: center;
         }
 
+        .btn-play {
+            margin: 2px 0 8px; width: 100%;
+            background: var(--primary); color: #fff;
+            font-size: .92rem; letter-spacing: .2px;
+        }
+        .btn-play:hover { filter: brightness(1.08); }
+        .btn-play.playing { background: #f59e0b; }
+
+        /* Number pills — tap any to jump to that QR code */
+        .qr-pills {
+            display: flex; flex-wrap: wrap; justify-content: center;
+            gap: 6px; margin: 4px 0 6px;
+        }
+        .qr-pill {
+            min-width: 34px; height: 34px; padding: 0 7px;
+            border: 1.5px solid var(--border);
+            border-radius: var(--r-sm);
+            background: var(--bg); color: var(--muted);
+            font-size: .8rem; font-weight: 700;
+            cursor: pointer; transition: background .12s, color .12s;
+            touch-action: manipulation;
+        }
+        .qr-pill:hover { background: var(--border); }
+        .qr-pill.active {
+            background: var(--primary); color: #fff;
+            border-color: var(--primary);
+        }
+
         .tip {
             font-size: .78rem; color: #1e40af;
             background: var(--primary-light);
@@ -331,10 +359,16 @@
 
         <div class="qr-canvas-box" id="qrBox"></div>
 
-        <div class="qr-nav hidden" id="qrNav">
-            <button class="btn btn-ghost" onclick="stepQR(-1)">&#8592; Prev</button>
-            <span class="qr-idx" id="qrIdx">1 / 1</span>
-            <button class="btn btn-ghost" onclick="stepQR(1)">Next &#8594;</button>
+        <!-- Multi-QR controls: hidden for a single code -->
+        <div class="hidden" id="qrMultiCtrl">
+            <button class="btn btn-play" id="playBtn" onclick="togglePlay()">&#9654; Auto Slideshow</button>
+            <div class="qr-nav">
+                <button class="btn btn-ghost" onclick="stepQR(-1)">&#8592; Prev</button>
+                <span class="qr-idx" id="qrIdx">1 / 1</span>
+                <button class="btn btn-ghost" onclick="stepQR(1)">Next &#8594;</button>
+            </div>
+            <!-- Numbered pills — tap any to jump to a missed code -->
+            <div class="qr-pills" id="qrPills"></div>
         </div>
 
         <p class="tip" id="qrTip">Hold this QR code up so the other device can scan it.</p>
@@ -473,6 +507,7 @@ function binToText(bin) {
 //  STATE – Generate
 // ═══════════════════════════════════════════════════════
 let chunks = [], chunkIdx = 0, qrObj = null;
+let slideshowTimer = null, isPlaying = false;
 
 // ═══════════════════════════════════════════════════════
 //  STATE – Scan
@@ -484,6 +519,7 @@ let got = {}, expected = null, lastData = '', lastTime = 0;
 //  TABS
 // ═══════════════════════════════════════════════════════
 function showTab(t) {
+    if (t !== 'gen') pauseSlideshow();
     document.getElementById('genPane').classList.toggle('active', t === 'gen');
     document.getElementById('scanPane').classList.toggle('active', t === 'scan');
     document.getElementById('tabGenBtn').classList.toggle('active', t === 'gen');
@@ -634,6 +670,7 @@ function onInput() {
 }
 
 function clearGen() {
+    pauseSlideshow();
     document.getElementById('inputText').value = '';
     onInput();
     document.getElementById('qrCard').classList.add('hidden');
@@ -647,6 +684,7 @@ function generateQR() {
     const text = document.getElementById('inputText').value.trim();
     if (!text) { toast('Enter some text first.'); return; }
 
+    pauseSlideshow();
     // Convert each chunk to a UTF-8 byte string so QRious encodes it correctly.
     chunks = buildChunks(text).map(textToBin);
     chunkIdx = 0;
@@ -659,13 +697,12 @@ function generateQR() {
 
 // QRious (cdnjs) — synchronous canvas API, reliable across all content sizes.
 function renderQR() {
-    const box = document.getElementById('qrBox');
-    const nav = document.getElementById('qrNav');
-    const idx = document.getElementById('qrIdx');
-    const tip = document.getElementById('qrTip');
+    const box  = document.getElementById('qrBox');
+    const ctrl = document.getElementById('qrMultiCtrl');
+    const idx  = document.getElementById('qrIdx');
+    const tip  = document.getElementById('qrTip');
 
     box.innerHTML = '';
-    // Use 88 % of viewport width up to 360 px — larger = bigger modules = easier scan
     const size = Math.min(Math.floor(window.innerWidth * 0.88), 360);
     const canvas = document.createElement('canvas');
     box.appendChild(canvas);
@@ -676,7 +713,7 @@ function renderQR() {
             value: chunks[chunkIdx],
             size: size,
             level: 'M',
-            padding: 8   // tight quiet-zone so modules use more of the canvas
+            padding: 8
         });
     } catch (e) {
         box.innerHTML = `<p style="color:#dc2626;padding:12px;font-size:.85rem">QR error: ${e.message}</p>`;
@@ -684,23 +721,73 @@ function renderQR() {
     }
 
     if (chunks.length > 1) {
-        nav.classList.remove('hidden');
+        ctrl.classList.remove('hidden');
         idx.textContent = `${chunkIdx + 1} / ${chunks.length}`;
-        // Tip is platform-aware: iOS can't intercept volume buttons (OS-level lock)
+
+        // Numbered pills — render / refresh
+        const pills = document.getElementById('qrPills');
+        pills.innerHTML = '';
+        for (let i = 0; i < chunks.length; i++) {
+            const btn = document.createElement('button');
+            btn.className = 'qr-pill' + (i === chunkIdx ? ' active' : '');
+            btn.textContent = i + 1;
+            btn.title = `Jump to QR ${i + 1}`;
+            const captured = i;
+            btn.addEventListener('click', () => { pauseSlideshow(); chunkIdx = captured; renderQR(); });
+            pills.appendChild(btn);
+        }
+
+        updatePlayBtn();
+
         const isAndroid = /Android/i.test(navigator.userAgent);
         const volTip = isAndroid ? ' · volume buttons' : '';
-        tip.textContent = `Scan all ${chunks.length} QR codes — tap QR to advance · swipe left/right${volTip} · or use the arrows.`;
+        tip.textContent = `Tap QR to advance · swipe left/right${volTip} · or tap a number to jump to a missed code.`;
     } else {
-        nav.classList.add('hidden');
+        ctrl.classList.add('hidden');
         tip.textContent = 'Hold this QR code up so the other device can scan it.';
     }
 }
 
 function stepQR(dir) {
+    pauseSlideshow(); // any manual step stops auto-play
     const n = chunkIdx + dir;
     if (n < 0 || n >= chunks.length) return;
     chunkIdx = n;
     renderQR();
+}
+
+// ── Slideshow ─────────────────────────────────────────────────────────────────
+function togglePlay() {
+    isPlaying ? pauseSlideshow() : startSlideshow();
+}
+
+function startSlideshow() {
+    isPlaying = true;
+    updatePlayBtn();
+    slideshowTimer = setInterval(() => {
+        chunkIdx = (chunkIdx + 1) % chunks.length; // loop back to 1 after last
+        renderQR();
+    }, 1500);
+}
+
+function pauseSlideshow() {
+    if (!isPlaying && !slideshowTimer) return;
+    isPlaying = false;
+    clearInterval(slideshowTimer);
+    slideshowTimer = null;
+    updatePlayBtn();
+}
+
+function updatePlayBtn() {
+    const btn = document.getElementById('playBtn');
+    if (!btn) return;
+    if (isPlaying) {
+        btn.innerHTML = '&#9646;&#9646; Pause';
+        btn.classList.add('playing');
+    } else {
+        btn.innerHTML = '&#9654; Auto Slideshow';
+        btn.classList.remove('playing');
+    }
 }
 
 // ── Keyboard + volume button navigation ──────────────────────────────────────
