@@ -152,12 +152,17 @@
 
         /* ── QR display ─────────────────────────────────── */
         .qr-wrap { text-align: center; }
+        /* touch-action: manipulation disables double-tap-to-zoom on this card.
+           user-scalable=no in <meta> is ignored by iOS 10+ for accessibility;
+           this CSS property is the only reliable cross-iOS fix. */
+        #qrCard { touch-action: manipulation; }
         .qr-canvas-box {
             display: inline-block;
             padding: 14px; background: #fff;
             border-radius: var(--r);
             box-shadow: var(--shadow-md);
             margin: 8px 0 10px;
+            touch-action: manipulation;
         }
         .qr-canvas-box canvas,
         .qr-canvas-box img { display: block; }
